@@ -6,32 +6,6 @@ const stopCheckBtn = document.getElementById("stop-check-btn");
 
 let updateNumbers;
 
-// Function to perform Luhn check (standard and Amex)
-function isValidCreditCard(number) {
-  // Remove non-digit characters
-  number = number.replace(/\D/g, '');
-
-  // Check if it's potentially a valid credit card number
-  if (!/^(?:3[47][0-9]{13}|4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|6(?:011|5[0-9][0-9])[0-9]{12}|3(?:0[0-5]|[68][0-9])[0-9]{11}|(?:2131|1800|35\d{3})\d{11})$/.test(number)) {
-    return false; 
-  }
-
-  let sum = 0;
-  let alternate = false;
-  for (let i = number.length - 1; i >= 0; i--) {
-    let n = parseInt(number.substring(i, i + 1));
-    if (alternate) {
-      n *= 2;
-      if (n > 9) {
-        n = (n % 10) + 1;
-      }
-    }
-    sum += n;
-    alternate = !alternate;
-  }
-  return (sum % 10) === 0;
-}
-
 checkBtn.addEventListener("click", function () {
   const numbers = document.getElementById("numbers").value;
   const numberArray = numbers.split("\n").filter((number) => {
@@ -59,12 +33,6 @@ checkBtn.addEventListener("click", function () {
 
     const validPattern = /^\d{16}\|\s*\d{2}\|\s*\d{4}\|\s*\d{3}$|^\d{15}\|\s*\d{2}\|\s*\d{4}\|\s*\d{4}$|^\d{14}\|\s*\d{2}\|\s*\d{4}\|\s*\d{4}$/;
     if (!validPattern.test(number)) {
-      continue;
-    }
-
-    // Perform Luhn check (handles both standard and Amex)
-    if (!isValidCreditCard(number)) {
-      muradList.push(`<span style='color:grey; font-weight:bold;'>Invalid (Luhn Check)</span> | ${number} /OshekherO`);
       continue;
     }
 
