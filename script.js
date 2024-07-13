@@ -6,32 +6,6 @@ const stopCheckBtn = document.getElementById("stop-check-btn");
 
 let updateNumbers;
 
-// Function to perform Luhn check (standard and Amex)
-function isValidCreditCard(number) {
-  // Remove non-digit characters
-  number = number.replace(/\D/g, '');
-
-  // Check if it's potentially a valid credit card number
-  if (!/^(?:3[47][0-9]{13}|4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|6(?:011|5[0-9][0-9])[0-9]{12}|3(?:0[0-5]|[68][0-9])[0-9]{11}|(?:2131|1800|35\d{3})\d{11})$/.test(number)) {
-    return false; 
-  }
-
-  let sum = 0;
-  let alternate = false;
-  for (let i = number.length - 1; i >= 0; i--) {
-    let n = parseInt(number.substring(i, i + 1));
-    if (alternate) {
-      n *= 2;
-      if (n > 9) {
-        n = (n % 10) + 1;
-      }
-    }
-    sum += n;
-    alternate = !alternate;
-  }
-  return (sum % 10) === 0;
-}
-
 checkBtn.addEventListener("click", function () {
   const numbers = document.getElementById("numbers").value;
   const numberArray = numbers.split("\n").filter((number) => {
@@ -52,12 +26,13 @@ checkBtn.addEventListener("click", function () {
   let muradList = [];
 
   for (let i = 0; i < numberArray.length; i++) {
-    const line = numberArray[i].trim();
-    const cardNumber = line.split("|")[0].trim();
+    const number = numberArray[i].trim();
+    const firstDigit = number.charAt(0);
+    const secondDigit = number.charAt(1);
+    const thirdDigit = number.charAt(2);
 
-    if (!isValidCreditCard(cardNumber)) {
-      // Create the output string here for invalid cards
-      muradList.push(`<span style='color:grey; font-weight:bold;'>Invalid (Luhn Check)</span> | ${line} /OshekherO`);
+    const validPattern = /^\d{16}\|\s*\d{2}\|\s*\d{4}\|\s*\d{3}$|^\d{15}\|\s*\d{2}\|\s*\d{4}\|\s*\d{4}$|^\d{14}\|\s*\d{2}\|\s*\d{4}\|\s*\d{4}$/;
+    if (!validPattern.test(number)) {
       continue;
     }
 
@@ -68,19 +43,19 @@ checkBtn.addEventListener("click", function () {
     const randomZero2 = Math.floor(Math.random() * 0);
 
     if (randomNumber < 0.2) {
-      aliList.push(`<span style='color:green; font-weight:bold;'>Live</span> | ${line} -> [Charge <span style='color:green; font-weight:bold;'>$${randomFour},${randomTen}</span>] [GATE:01]. /OshekherO`);
+      aliList.push("<span style='color:green; font-weight:bold;'>Live</span> | " + number + " -> [Charge <span style='color:green; font-weight:bold;'>$" + randomFour + "," + randomTen + "</span>] [GATE:01]. /OshekherO");
     } else if (randomNumber < 0.9) {
-      muhammadList.push(`<span style='color:red; font-weight:bold;'>Dead</span> | ${line} -> [Charge <span style='color:red; font-weight:bold;'>$${randomZero1},${randomZero2}</span>] [GATE:01]. /OshekherO`);
+      muhammadList.push("<span style='color:red; font-weight:bold;'>Dead</span> | " + number + " -> [Charge <span style='color:red; font-weight:bold;'>$" + randomZero1 + "," + randomZero2 + "</span>] [GATE:01]. /OshekherO");
     } else {
-      muradList.push(`<span style='color:orange; font-weight:bold;'>Unknown</span> | ${line} -> [Charge <span style='color:orange; font-weight:bold;'>N/A</span>] [GATE:01]. /OshekherO`);
+      muradList.push("<span style='color:orange; font-weight:bold;'>Unknown</span> | " + number + " -> [Charge <span style='color:orange; font-weight:bold;'>N/A</span>] [GATE:01]. /OshekherO");
     }
   }
 
   let aliCount = 0;
   let muhammadCount = 0;
   let muradCount = 0;
-  const minDelay = 2000; 
-  const maxDelay = 5000; 
+  const minDelay = 2000;
+  const maxDelay = 5000;
   let i = 0;
 
   updateNumbers = setInterval(() => {
@@ -114,7 +89,6 @@ checkBtn.addEventListener("click", function () {
     }
   }, Math.floor(Math.random() * (maxDelay - minDelay + 1) + minDelay));
 });
-
 
 // copy buttons
 const copyButtons = document.querySelectorAll(".copy-btn");
