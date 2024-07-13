@@ -56,23 +56,23 @@ checkBtn.addEventListener("click", function () {
     const cardNumber = line.split("|")[0].trim();
 
     if (!isValidCreditCard(cardNumber)) {
+      // Create the output string here for invalid cards
       muradList.push(`<span style='color:grey; font-weight:bold;'>Invalid (Luhn Check)</span> | ${line} /OshekherO`);
-      // Continue to the next iteration if the card is invalid
-      continue; 
+      continue;
     }
 
     const randomNumber = Math.random();
     const randomFour = Math.floor(Math.random() * 4);
     const randomTen = Math.floor(Math.random() * 10);
-    const randomZero1 = Math.floor(Math.random() * 0); 
-    const randomZero2 = Math.floor(Math.random() * 0); 
+    const randomZero1 = Math.floor(Math.random() * 0);
+    const randomZero2 = Math.floor(Math.random() * 0);
 
     if (randomNumber < 0.2) {
-      aliList.push("<span style='color:green; font-weight:bold;'>Live</span> | " + line + " -> [Charge <span style='color:green; font-weight:bold;'>$" + randomFour + "," + randomTen + "</span>] [GATE:01]. /OshekherO");
+      aliList.push(`<span style='color:green; font-weight:bold;'>Live</span> | ${line} -> [Charge <span style='color:green; font-weight:bold;'>$${randomFour},${randomTen}</span>] [GATE:01]. /OshekherO`);
     } else if (randomNumber < 0.9) {
-      muhammadList.push("<span style='color:red; font-weight:bold;'>Dead</span> | " + line + " -> [Charge <span style='color:red; font-weight:bold;'>$" + randomZero1 + "," + randomZero2 + "</span>] [GATE:01]. /OshekherO");
+      muhammadList.push(`<span style='color:red; font-weight:bold;'>Dead</span> | ${line} -> [Charge <span style='color:red; font-weight:bold;'>$${randomZero1},${randomZero2}</span>] [GATE:01]. /OshekherO`);
     } else {
-      muradList.push("<span style='color:orange; font-weight:bold;'>Unknown</span> | " + line + " -> [Charge <span style='color:orange; font-weight:bold;'>N/A</span>] [GATE:01]. /OshekherO");
+      muradList.push(`<span style='color:orange; font-weight:bold;'>Unknown</span> | ${line} -> [Charge <span style='color:orange; font-weight:bold;'>N/A</span>] [GATE:01]. /OshekherO`);
     }
   }
 
