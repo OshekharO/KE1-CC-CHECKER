@@ -9,6 +9,8 @@ KE1-CC-CHECKER is an credit card checker tool designed to simulate the process o
 - Simulated charging amounts for each card
 - Copy results to clipboard
 - Responsive design for various screen sizes
+- Luhn Algorithm Implemented
+- Checks Amex, Visa and MasterCard
 
 ## Technologies Used
 
