@@ -194,6 +194,10 @@
         opacity: 0.8;
       }
 
+      .card-details span {
+        margin-right: 10px;
+      }
+
       .card-type {
         display: inline-block;
         padding: 2px 6px;
