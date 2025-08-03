@@ -215,12 +215,13 @@
           const cardElement = document.createElement("div");
           cardElement.className = `result-card ${result.status.toLowerCase()}`;
 
-          const { number, month, year } = validator.extractCardData(result.cardData);
+          const { number, month, year, cvv } = validator.extractCardData(result.cardData);
 
           cardElement.innerHTML = `
           <div class="card-number">${number}</div>
           <div class="card-details">
             <span>Exp: ${month}/${year.length === 2 ? "20" + year : year}</span>
+            <span>CVV: ${cvv}</span>
             <span class="card-type">${result.type.toUpperCase()}</span>
           </div>
           <div class="status">${result.status}</div>
