@@ -1,160 +1,287 @@
-const checkBtn = document.getElementById("check-btn");
-const aliNumbersDiv = document.getElementById("ali-numbers");
-const muhammadNumbersDiv = document.getElementById("muhammad-numbers");
-const muradNumbersDiv = document.getElementById("murad-numbers");
-const stopCheckBtn = document.getElementById("stop-check-btn");
+      class CCValidator {
+        constructor() {
+          this.cardPatterns = {
+            visa: {
+              pattern: /^4[0-9]{12}(?:[0-9]{3})?$/,
+              cvvLength: [3],
+            },
+            mastercard: {
+              pattern: /^5[1-5][0-9]{14}$/,
+              cvvLength: [3],
+            },
+            amex: {
+              pattern: /^3[47][0-9]{13}$/,
+              cvvLength: [4],
+            },
+            discover: {
+              pattern: /^6(?:011|5[0-9]{2})[0-9]{12}$/,
+              cvvLength: [3],
+            },
+            diners: {
+              pattern: /^3(?:0[0-5]|[68][0-9])[0-9]{11}$/,
+              cvvLength: [3],
+            },
+            jcb: {
+              pattern: /^(?:2131|1800|35\d{3})\d{11}$/,
+              cvvLength: [3],
+            },
+          };
+          this.isProcessing = false;
+          this.currentBatch = null;
+        }
 
-let updateNumbers;
+        extractCardData(cardData) {
+          const parts = cardData.split("|").map((part) => part.trim());
+          return {
+            number: parts[0] || "",
+            month: parts[1] || "",
+            year: parts[2] || "",
+            cvv: parts[3] || "",
+          };
+        }
 
-// Function to perform Luhn check (standard and Amex)
-function isValidCreditCard(number) {
-  // Remove non-digit characters
-  number = number.replace(/\D/g, '');
+        luhnCheck(cardNumber) {
+          const cleaned = cardNumber.replace(/\D/g, "");
+          if (cleaned.length < 13 || cleaned.length > 19) return false;
 
-  // Check if it's potentially a valid credit card number
-  if (!/^(?:3[47][0-9]{13}|4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|6(?:011|5[0-9][0-9])[0-9]{12}|3(?:0[0-5]|[68][0-9])[0-9]{11}|(?:2131|1800|35\d{3})\d{11})$/.test(number)) {
-    return false;
-  }
+          let sum = 0;
+          let shouldDouble = false;
 
-  let sum = 0;
-  let alternate = false;
-  for (let i = number.length - 1; i >= 0; i--) {
-    let n = parseInt(number.substring(i, i + 1));
-    if (alternate) {
-      n *= 2;
-      if (n > 9) {
-        n = (n % 10) + 1;
+          for (let i = cleaned.length - 1; i >= 0; i--) {
+            let digit = parseInt(cleaned.charAt(i), 10);
+
+            if (shouldDouble) {
+              digit *= 2;
+              if (digit > 9) digit -= 9;
+            }
+
+            sum += digit;
+            shouldDouble = !shouldDouble;
+          }
+
+          return sum % 10 === 0;
+        }
+
+        validateExpiration(month, year) {
+          if (!month || !year) return false;
+          if (month.length !== 2) return false;
+
+          const mm = parseInt(month, 10);
+          if (mm < 1 || mm > 12) return false;
+
+          const currentYear = new Date().getFullYear();
+          const currentMonth = new Date().getMonth() + 1;
+
+          let fullYear = parseInt(year, 10);
+          if (year.length === 2) {
+            fullYear = 2000 + fullYear;
+          } else if (year.length !== 4) {
+            return false;
+          }
+
+          if (fullYear < currentYear) return false;
+          if (fullYear === currentYear && mm < currentMonth) return false;
+
+          return true;
+        }
+
+        validateCVV(cvv, cardType) {
+          if (!cvv) return false;
+          const typeInfo = this.cardPatterns[cardType] || { cvvLength: [3] };
+          return typeInfo.cvvLength.includes(cvv.length) && /^\d+$/.test(cvv);
+        }
+
+        validateCard(cardData) {
+          const { number, month, year, cvv } = this.extractCardData(cardData);
+
+          if (!number) return { valid: false, reason: "Missing card number" };
+
+          const cleanedNumber = number.replace(/\D/g, "");
+          const type = Object.entries(this.cardPatterns).find(([_, info]) => info.pattern.test(cleanedNumber))?.[0] || "unknown";
+
+          if (!this.luhnCheck(cleanedNumber)) {
+            return { valid: false, type, reason: "Failed Luhn check" };
+          }
+
+          if (!this.validateExpiration(month, year)) {
+            return { valid: false, type, reason: "Invalid expiration date" };
+          }
+
+          if (!this.validateCVV(cvv, type)) {
+            return { valid: false, type, reason: "Invalid CVV" };
+          }
+
+          return { valid: true, type };
+        }
+
+        simulateStatus() {
+          const random = Math.random();
+          if (random < 0.2) return "LIVE";
+          return "DEAD";
+        }
+
+        async processBatch(cardsData, progressCallback, resultCallback) {
+          if (this.isProcessing) return;
+
+          this.isProcessing = true;
+          this.currentBatch = {
+            total: cardsData.length,
+            processed: 0,
+            valid: 0,
+            live: 0,
+            dead: 0,
+          };
+
+          for (let i = 0; i < cardsData.length; i++) {
+            if (!this.isProcessing) break;
+
+            const cardData = cardsData[i].trim();
+            if (!cardData) continue;
+
+            const validation = this.validateCard(cardData);
+            let status = "INVALID";
+
+            if (validation.valid) {
+              status = this.simulateStatus();
+              this.currentBatch.valid++;
+
+              if (status === "LIVE") this.currentBatch.live++;
+              else this.currentBatch.dead++;
+            }
+
+            this.currentBatch.processed++;
+            const progress = Math.floor((this.currentBatch.processed / this.currentBatch.total) * 100);
+
+            if (status === "LIVE" || status === "DEAD") {
+              resultCallback({
+                cardData,
+                ...validation,
+                status,
+                progress,
+              });
+            }
+
+            progressCallback(this.currentBatch);
+
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+
+          this.isProcessing = false;
+          return this.currentBatch;
+        }
+
+        stopProcessing() {
+          this.isProcessing = false;
+        }
       }
-    }
-    sum += n;
-    alternate = !alternate;
-  }
-  return (sum % 10) === 0;
-}
 
-checkBtn.addEventListener("click", function () {
-  const numbers = document.getElementById("numbers").value;
-  const numberArray = numbers.split("\n").filter((number) => {
-    return number.trim() !== "";
-  });
+      document.addEventListener("DOMContentLoaded", () => {
+        const validator = new CCValidator();
+        const cardInput = document.getElementById("card-input");
+        const validateBtn = document.getElementById("validate-btn");
+        const stopBtn = document.getElementById("stop-btn");
+        const clearBtn = document.getElementById("clear-btn");
+        const themeToggle = document.getElementById("theme-toggle");
+        const progressBar = document.getElementById("progress-bar");
+        const resultsContainer = document.getElementById("results-container");
+        const counters = {
+          total: document.getElementById("total-count"),
+          valid: document.getElementById("valid-count"),
+          live: document.getElementById("live-count"),
+          dead: document.getElementById("dead-count"),
+        };
 
-  aliNumbersDiv.innerHTML = "";
-  muhammadNumbersDiv.innerHTML = "";
-  muradNumbersDiv.innerHTML = "";
+        function toggleTheme() {
+          const currentTheme = document.documentElement.getAttribute("data-theme");
+          const newTheme = currentTheme === "dark" ? "light" : "dark";
+          document.documentElement.setAttribute("data-theme", newTheme);
+          localStorage.setItem("theme", newTheme);
+          themeToggle.textContent = newTheme === "dark" ? "Toggle Light Mode" : "Toggle Dark Mode";
+        }
 
-  checkBtn.classList.add("shake");
-  setTimeout(() => {
-    checkBtn.classList.remove("shake");
-  }, 500);
+        const savedTheme = localStorage.getItem("theme") || "light";
+        document.documentElement.setAttribute("data-theme", savedTheme);
+        themeToggle.textContent = savedTheme === "dark" ? "Toggle Light Mode" : "Toggle Dark Mode";
+        themeToggle.addEventListener("click", toggleTheme);
 
-  let aliList = [];
-  let muhammadList = [];
-  let muradList = [];
+        function updateCounters(stats) {
+          counters.total.textContent = stats.total;
+          counters.valid.textContent = stats.valid;
+          counters.live.textContent = stats.live;
+          counters.dead.textContent = stats.dead;
+        }
 
-  for (let i = 0; i < numberArray.length; i++) {
-    const line = numberArray[i].trim();
-    const cardNumber = line.split("|")[0].trim();
+        function addResultToUI(result) {
+          const cardElement = document.createElement("div");
+          cardElement.className = `result-card ${result.status.toLowerCase()}`;
 
-    // CORRECTED LOGIC:
-    // 1. Perform Luhn check FIRST
-    if (!isValidCreditCard(cardNumber)) {
-      muradList.push(`<span style='color:grey; font-weight:bold;'>Invalid (Luhn Check)</span> | ${line} /OshekherO`);
-      // If invalid, continue to the next card
-      continue; 
-    }
+          const { number, month, year } = validator.extractCardData(result.cardData);
 
-    // 2. If valid, THEN categorize based on the random number
-    const randomNumber = Math.random();
-    if (randomNumber < 0.2) {
-      aliList.push(`<span style='color:green; font-weight:bold;'>Live</span> | ${line} -> [Charge <span style='color:green; font-weight:bold;'>$4,99</span>] [GATE:01]. /OshekherO`);
-    } else if (randomNumber < 0.9) {
-      muhammadList.push(`<span style='color:red; font-weight:bold;'>Dead</span> | ${line} -> [Charge <span style='color:red; font-weight:bold;'>$0,00</span>] [GATE:01]. /OshekherO`);
-    } else {
-      muradList.push(`<span style='color:orange; font-weight:bold;'>Unknown</span> | ${line} -> [Charge <span style='color:orange; font-weight:bold;'>N/A</span>] [GATE:01]. /OshekherO`);
-    }
-  } 
+          cardElement.innerHTML = `
+          <div class="card-number">${number}</div>
+          <div class="card-details">
+            <span>Exp: ${month}/${year.length === 2 ? "20" + year : year}</span>
+            <span class="card-type">${result.type.toUpperCase()}</span>
+          </div>
+          <div class="status">${result.status}</div>
+          ${result.reason ? `<div class="reason">${result.reason}</div>` : ""}
+        `;
 
-  let aliCount = 0;
-  let muhammadCount = 0;
-  let muradCount = 0;
-  const minDelay = 2000;
-  const maxDelay = 5000;
-  let i = 0;
+          resultsContainer.prepend(cardElement);
+        }
 
-  updateNumbers = setInterval(() => {
-    if (i < aliList.length) {
-      aliCount++;
-      aliNumbersDiv.innerHTML += aliList[i] + "<br>";
-      document.getElementById("ali-count").innerHTML = "Checked: " + aliCount;
-    }
-    if (i < muhammadList.length) {
-      muhammadCount++;
-      muhammadNumbersDiv.innerHTML += muhammadList[i] + "<br>";
-      document.getElementById("muhammad-count").innerHTML = "Checked: " + muhammadCount;
-    }
-    if (i < muradList.length) {
-      muradCount++;
-      muradNumbersDiv.innerHTML += muradList[i] + "<br>";
-      document.getElementById("murad-count").innerHTML = "Checked: " + muradCount;
-    }
-    i++;
-    if (i >= aliList.length && i >= muhammadList.length && i >= muradList.length) {
-      clearInterval(updateNumbers);
-      Swal.fire({
-        title: "Checking completed!",
-        text: "All CC have been checked successfully.",
-        icon: "success",
-        confirmButtonText: "Okay",
+        validateBtn.addEventListener("click", async () => {
+          const cardsData = cardInput.value.split("\n").filter((line) => line.trim());
+          if (cardsData.length === 0) return;
+
+          validateBtn.disabled = true;
+          stopBtn.disabled = false;
+          resultsContainer.innerHTML = "";
+
+          await validator.processBatch(
+            cardsData,
+            (stats) => {
+              updateCounters(stats);
+            },
+            (result) => {
+              progressBar.style.width = `${result.progress}%`;
+              addResultToUI(result);
+            }
+          );
+
+          validateBtn.disabled = false;
+          stopBtn.disabled = true;
+        });
+
+        stopBtn.addEventListener("click", () => {
+          validator.stopProcessing();
+          stopBtn.disabled = true;
+          validateBtn.disabled = false;
+        });
+
+        clearBtn.addEventListener("click", () => {
+          cardInput.value = "";
+          resultsContainer.innerHTML = "";
+          progressBar.style.width = "0%";
+          Object.values(counters).forEach((counter) => (counter.textContent = "0"));
+        });
+
+        const structuredData = {
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: "Advanced Credit Card Validator",
+          description: "Validate credit card numbers using Luhn algorithm with expiration date and CVV verification",
+          applicationCategory: "FinanceApplication",
+          operatingSystem: "Web Browser",
+          offers: {
+            "@type": "Offer",
+            price: "0",
+            priceCurrency: "USD",
+          },
+        };
+
+        const scriptTag = document.createElement("script");
+        scriptTag.type = "application/ld+json";
+        scriptTag.text = JSON.stringify(structuredData);
+        document.head.appendChild(scriptTag);
       });
-      checkBtn.disabled = false;
-      stopCheckBtn.disabled = true;
-      document.getElementById("numbers").value = "";
-    }
-  }, Math.floor(Math.random() * (maxDelay - minDelay + 1) + minDelay)); 
-});
-
-// copy buttons
-const copyButtons = document.querySelectorAll(".copy-btn");
-copyButtons.forEach(function (button) {
-  button.addEventListener("click", function () {
-    const parentElement = button.parentElement;
-    const text = parentElement.innerHTML.replace(/<\/?[^>]+(>|$)/g, "").trim();
-    navigator.clipboard.writeText(text);
-    button.classList.add("copied");
-    const span = document.createElement("span");
-    span.innerHTML = "Copied!";
-    span.style.color = "green";
-    span.style.marginLeft = "5px";
-    button.parentNode.insertBefore(span, button.nextSibling);
-    setTimeout(function () {
-      button.classList.remove("copied");
-      span.remove();
-    }, 2000);
-  });
-});
-
-// stop check button
-stopCheckBtn.addEventListener("click", function () {
-  clearInterval(updateNumbers);
-  Swal.fire({
-    title: "Checking stopped!",
-    text: "The checking process has been stopped.",
-    icon: "error",
-    confirmButtonText: "Okay",
-  });
-  stopCheckBtn.disabled = true;
-  checkBtn.disabled = false;
-  stopCheckBtn.classList.add("shake");
-  setTimeout(() => {
-    stopCheckBtn.classList.remove("shake");
-  }, 500);
-});
-
-// toggle buttons
-function toggleButtons() {
-  const checkBtn = document.getElementById("check-btn");
-  const stopCheckBtn = document.getElementById("stop-check-btn");
-  checkBtn.disabled = true;
-  stopCheckBtn.disabled = false;
-  stopCheckBtn.style.backgroundColor = "green";
-}
