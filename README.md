@@ -5,7 +5,7 @@ KE1-CC-CHECKER is an credit card checker tool designed to simulate the process o
 ## Features
 
 - Check multiple credit card numbers simultaneously
-- Categorize results into Live, Dead, and Unknown statuses
+- Categorize results into Live and Dead statuses
 - Simulated charging amounts for each card
 - Copy results to clipboard
 - Responsive design for various screen sizes
@@ -17,7 +17,6 @@ KE1-CC-CHECKER is an credit card checker tool designed to simulate the process o
 - HTML5
 - CSS3
 - JavaScript (ES6+)
-- [SweetAlert2](https://sweetalert2.github.io/) for popup notifications
 
 ## Disclaimer
 
