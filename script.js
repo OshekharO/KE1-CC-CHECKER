@@ -2,6 +2,10 @@
  * Credit Card Validator Class
  * Implements comprehensive validation using Luhn algorithm and BIN/IIN detection
  */
+
+// Processing delay in milliseconds for UI responsiveness
+const PROCESSING_DELAY_MS = 80;
+
 class CCValidator {
   constructor() {
     // Card patterns with BIN ranges and issuer-specific validation rules
@@ -227,20 +231,16 @@ class CCValidator {
   }
 
   /**
-   * Validate card number structure (no repeating patterns)
+   * Validate card number structure (no obviously fake patterns)
    * @param {string} cardNumber - Cleaned card number
    * @returns {boolean} True if structure is valid
    */
   validateStructure(cardNumber) {
-    // Check for sequential patterns (123456789...)
-    const sequential = "0123456789";
-    if (sequential.includes(cardNumber.substring(0, 8))) return false;
-
     // Check for repeating single digit (1111111111111111)
     if (/^(.)\1+$/.test(cardNumber)) return false;
 
-    // Check for simple repeating patterns (12121212...)
-    if (/^(.{1,4})\1+$/.test(cardNumber)) return false;
+    // Check for simple 2-char repeating patterns that fill the entire number (12121212...)
+    if (/^(.{2})\1{6,}$/.test(cardNumber)) return false;
 
     return true;
   }
@@ -368,7 +368,7 @@ class CCValidator {
       progressCallback(this.currentBatch);
 
       // Small delay for UI responsiveness
-      await new Promise(resolve => setTimeout(resolve, 80));
+      await new Promise(resolve => setTimeout(resolve, PROCESSING_DELAY_MS));
     }
 
     this.isProcessing = false;
