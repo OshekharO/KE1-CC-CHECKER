@@ -3,65 +3,90 @@
  * Implements comprehensive validation using Luhn algorithm and BIN/IIN detection
  */
 
-// Processing delay in milliseconds for UI responsiveness
-const PROCESSING_DELAY_MS = 80;
+// Processing configuration for responsive UI updates
+const PROCESSING_DELAY_MS = 40;
+const PROCESSING_CHUNK_SIZE = 20;
+
+const REASON_CODES = {
+  MISSING_CARD_NUMBER: "MISSING_CARD_NUMBER",
+  INVALID_CARD_LENGTH: "INVALID_CARD_LENGTH",
+  UNKNOWN_CARD_PROFILE: "UNKNOWN_CARD_PROFILE",
+  INVALID_CARD_STRUCTURE: "INVALID_CARD_STRUCTURE",
+  FAILED_LUHN: "FAILED_LUHN",
+  INVALID_BIN_IIN: "INVALID_BIN_IIN",
+  MISSING_EXPIRATION_DATE: "MISSING_EXPIRATION_DATE",
+  INVALID_MONTH: "INVALID_MONTH",
+  INVALID_YEAR_FORMAT: "INVALID_YEAR_FORMAT",
+  INVALID_YEAR_LENGTH: "INVALID_YEAR_LENGTH",
+  CARD_EXPIRED: "CARD_EXPIRED",
+  EXPIRATION_TOO_FAR: "EXPIRATION_TOO_FAR",
+  INVALID_CVV: "INVALID_CVV"
+};
+
+const REASON_MESSAGES = {
+  [REASON_CODES.MISSING_CARD_NUMBER]: "Missing card number",
+  [REASON_CODES.INVALID_CARD_LENGTH]: "Invalid card length",
+  [REASON_CODES.UNKNOWN_CARD_PROFILE]: "Unsupported card profile",
+  [REASON_CODES.INVALID_CARD_STRUCTURE]: "Invalid card structure",
+  [REASON_CODES.FAILED_LUHN]: "Failed Luhn check",
+  [REASON_CODES.INVALID_BIN_IIN]: "Invalid BIN/IIN",
+  [REASON_CODES.MISSING_EXPIRATION_DATE]: "Missing date components",
+  [REASON_CODES.INVALID_MONTH]: "Invalid month",
+  [REASON_CODES.INVALID_YEAR_FORMAT]: "Invalid year format",
+  [REASON_CODES.INVALID_YEAR_LENGTH]: "Year must be 2 or 4 digits",
+  [REASON_CODES.CARD_EXPIRED]: "Card expired",
+  [REASON_CODES.EXPIRATION_TOO_FAR]: "Expiration too far in future",
+  [REASON_CODES.INVALID_CVV]: "Invalid CVV"
+};
 
 class CCValidator {
   constructor() {
-    // Card patterns with BIN ranges and issuer-specific validation rules
-    this.cardPatterns = {
+    // Centralized card profile rules
+    this.cardProfiles = {
       visa: {
-        pattern: /^4[0-9]{12}(?:[0-9]{3})?$/,
-        binRanges: [[4, 4]],
+        prefixes: [[4, 4]],
         lengths: [13, 16, 19],
         cvvLength: [3],
         name: "Visa"
       },
       mastercard: {
-        pattern: /^(5[1-5][0-9]{14}|2(2[2-9][0-9]|[3-6][0-9]{2}|7[01][0-9]|720)[0-9]{12})$/,
-        binRanges: [[51, 55], [2221, 2720]],
+        prefixes: [[51, 55], [2221, 2720]],
         lengths: [16],
         cvvLength: [3],
         name: "Mastercard"
       },
       amex: {
-        pattern: /^3[47][0-9]{13}$/,
-        binRanges: [[34, 34], [37, 37]],
+        prefixes: [[34, 34], [37, 37]],
         lengths: [15],
         cvvLength: [4],
         name: "American Express"
       },
       discover: {
-        pattern: /^6(?:011|4[4-9][0-9]|5[0-9]{2})[0-9]{12}$/,
-        binRanges: [[6011, 6011], [644, 649], [65, 65]],
+        prefixes: [[6011, 6011], [644, 649], [65, 65]],
         lengths: [16, 17, 18, 19],
         cvvLength: [3],
         name: "Discover"
       },
       diners: {
-        pattern: /^3(?:0[0-5]|[68][0-9])[0-9]{11,13}$/,
-        binRanges: [[300, 305], [36, 36], [38, 39]],
+        prefixes: [[300, 305], [36, 36], [38, 39]],
         lengths: [14, 15, 16],
         cvvLength: [3],
         name: "Diners Club"
       },
       jcb: {
-        pattern: /^(?:2131|1800|35[0-9]{3})[0-9]{11,13}$/,
-        binRanges: [[3528, 3589], [2131, 2131], [1800, 1800]],
+        prefixes: [[3528, 3589], [2131, 2131], [1800, 1800]],
         lengths: [15, 16, 17, 18, 19],
         cvvLength: [3],
         name: "JCB"
       },
       unionpay: {
-        pattern: /^62[0-9]{14,17}$/,
-        binRanges: [[62, 62]],
+        prefixes: [[62, 62]],
         lengths: [16, 17, 18, 19],
         cvvLength: [3],
         name: "UnionPay"
       },
       maestro: {
-        pattern: /^(5018|5020|5038|5893|6304|6759|676[1-3])[0-9]{8,15}$/,
-        binRanges: [[5018, 5018], [5020, 5020], [5038, 5038], [6304, 6304], [6759, 6759]],
+        prefixes: [[5018, 5018], [5020, 5020], [5038, 5038], [5893, 5893], [6304, 6304], [6759, 6759], [6761, 6763]],
         lengths: [12, 13, 14, 15, 16, 17, 18, 19],
         cvvLength: [3],
         name: "Maestro"
@@ -72,11 +97,6 @@ class CCValidator {
     this.currentBatch = null;
   }
 
-  /**
-   * Extract card data from pipe-delimited string
-   * @param {string} cardData - Card data in format: number|month|year|cvv
-   * @returns {Object} Extracted card components
-   */
   extractCardData(cardData) {
     const parts = cardData.split("|").map(part => part.trim());
     return {
@@ -87,34 +107,34 @@ class CCValidator {
     };
   }
 
-  /**
-   * Clean card number by removing non-digit characters
-   * @param {string} cardNumber - Raw card number
-   * @returns {string} Cleaned card number with only digits
-   */
   cleanCardNumber(cardNumber) {
     return cardNumber.replace(/\D/g, "");
   }
 
-  /**
-   * Validate card number length
-   * @param {string} cardNumber - Cleaned card number
-   * @returns {boolean} True if length is valid
-   */
-  validateLength(cardNumber) {
+  createReason(reasonCode) {
+    return { reasonCode, reason: REASON_MESSAGES[reasonCode] };
+  }
+
+  normalizeInput(cardData, originalIndex = 0) {
+    const extracted = this.extractCardData(cardData);
+    return {
+      raw: cardData,
+      originalIndex,
+      ...extracted,
+      cleanedNumber: this.cleanCardNumber(extracted.number)
+    };
+  }
+
+  validateLength(cardNumber, cardInfo) {
     const length = cardNumber.length;
+    if (cardInfo?.lengths?.length) {
+      return cardInfo.lengths.includes(length);
+    }
     return length >= 12 && length <= 19;
   }
 
-  /**
-   * Luhn algorithm (Mod 10) for card number validation
-   * Enhanced implementation with better performance
-   * @param {string} cardNumber - Cleaned card number
-   * @returns {boolean} True if checksum is valid
-   */
   luhnCheck(cardNumber) {
-    const digits = cardNumber.split("").map(Number);
-    const length = digits.length;
+    const length = cardNumber.length;
 
     if (length < 12 || length > 19) return false;
 
@@ -123,7 +143,7 @@ class CCValidator {
 
     // Process from right to left
     for (let i = length - 1; i >= 0; i--) {
-      let digit = digits[i];
+      let digit = Number(cardNumber[i]);
 
       if (isSecond) {
         digit *= 2;
@@ -137,161 +157,178 @@ class CCValidator {
     return sum % 10 === 0;
   }
 
-  /**
-   * Detect card type based on BIN/IIN ranges
-   * @param {string} cardNumber - Cleaned card number
-   * @returns {Object} Card type info or unknown
-   */
+  prefixInRange(cardNumber, [start, end]) {
+    const size = String(start).length;
+    const prefix = parseInt(cardNumber.slice(0, size), 10);
+    return !Number.isNaN(prefix) && prefix >= start && prefix <= end;
+  }
+
+  matchesProfile(cardNumber, profile) {
+    const hasValidLength = profile.lengths.includes(cardNumber.length);
+    if (!hasValidLength) return false;
+    return profile.prefixes.some(range => this.prefixInRange(cardNumber, range));
+  }
+
   detectCardType(cardNumber) {
-    for (const [type, info] of Object.entries(this.cardPatterns)) {
-      if (info.pattern.test(cardNumber)) {
+    for (const [type, info] of Object.entries(this.cardProfiles)) {
+      if (this.matchesProfile(cardNumber, info)) {
         return { type, ...info };
       }
     }
-    return { type: "unknown", name: "Unknown", cvvLength: [3] };
+    return { type: "unknown", name: "Unknown", lengths: [], cvvLength: [3], prefixes: [] };
   }
 
-  /**
-   * Validate BIN/IIN prefix against known ranges
-   * @param {string} cardNumber - Cleaned card number
-   * @param {Object} cardInfo - Card type info with BIN ranges
-   * @returns {boolean} True if BIN is valid
-   */
   validateBIN(cardNumber, cardInfo) {
-    if (!cardInfo.binRanges) return true;
-
-    for (const [start, end] of cardInfo.binRanges) {
-      const prefixLength = String(start).length;
-      const prefix = parseInt(cardNumber.substring(0, prefixLength), 10);
-      if (prefix >= start && prefix <= end) return true;
-    }
-    return false;
+    if (!cardInfo.prefixes?.length) return true;
+    return cardInfo.prefixes.some(range => this.prefixInRange(cardNumber, range));
   }
 
-  /**
-   * Validate expiration date with comprehensive checks
-   * @param {string} month - Month (MM format)
-   * @param {string} year - Year (YY or YYYY format)
-   * @returns {Object} Validation result with details
-   */
   validateExpiration(month, year) {
     if (!month || !year) {
-      return { valid: false, reason: "Missing date components" };
+      return { valid: false, ...this.createReason(REASON_CODES.MISSING_EXPIRATION_DATE) };
     }
 
-    // Normalize month
     const monthNum = parseInt(month, 10);
     if (isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
-      return { valid: false, reason: "Invalid month" };
+      return { valid: false, ...this.createReason(REASON_CODES.INVALID_MONTH) };
     }
 
-    // Normalize year
     let fullYear = parseInt(year, 10);
     if (isNaN(fullYear)) {
-      return { valid: false, reason: "Invalid year format" };
+      return { valid: false, ...this.createReason(REASON_CODES.INVALID_YEAR_FORMAT) };
     }
 
     if (year.length === 2) {
       fullYear = 2000 + fullYear;
     } else if (year.length !== 4) {
-      return { valid: false, reason: "Year must be 2 or 4 digits" };
+      return { valid: false, ...this.createReason(REASON_CODES.INVALID_YEAR_LENGTH) };
     }
 
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1;
 
-    // Card expired
     if (fullYear < currentYear) {
-      return { valid: false, reason: "Card expired" };
+      return { valid: false, ...this.createReason(REASON_CODES.CARD_EXPIRED) };
     }
 
     if (fullYear === currentYear && monthNum < currentMonth) {
-      return { valid: false, reason: "Card expired" };
+      return { valid: false, ...this.createReason(REASON_CODES.CARD_EXPIRED) };
     }
 
-    // Cards typically valid for 10 years
     if (fullYear > currentYear + 10) {
-      return { valid: false, reason: "Expiration too far in future" };
+      return { valid: false, ...this.createReason(REASON_CODES.EXPIRATION_TOO_FAR) };
     }
 
     return { valid: true, month: monthNum, year: fullYear };
   }
 
-  /**
-   * Validate CVV/CVC code
-   * @param {string} cvv - CVV code
-   * @param {Object} cardInfo - Card type info
-   * @returns {boolean} True if CVV is valid
-   */
   validateCVV(cvv, cardInfo) {
     if (!cvv) return false;
     const validLengths = cardInfo.cvvLength || [3];
     return validLengths.includes(cvv.length) && /^\d+$/.test(cvv);
   }
 
-  /**
-   * Validate card number structure (no obviously fake patterns)
-   * @param {string} cardNumber - Cleaned card number
-   * @returns {boolean} True if structure is valid
-   */
   validateStructure(cardNumber) {
-    // Check for repeating single digit (1111111111111111)
     if (/^(.)\1+$/.test(cardNumber)) return false;
 
-    // Check for simple 2-char repeating patterns that fill the entire number (12121212...)
     if (/^(.{2})\1{6,}$/.test(cardNumber)) return false;
 
     return true;
   }
 
-  /**
-   * Comprehensive card validation
-   * @param {string} cardData - Full card data string
-   * @returns {Object} Validation result with all details
-   */
-  validateCard(cardData) {
-    const { number, month, year, cvv } = this.extractCardData(cardData);
+  classifyStatus(isValid) {
+    if (!isValid) return "INVALID";
+    return this.simulateStatus();
+  }
+
+  validateCard(normalizedCard) {
+    const { number, month, year, cvv, cleanedNumber } = normalizedCard;
 
     if (!number) {
-      return { valid: false, reason: "Missing card number" };
+      return {
+        valid: false,
+        type: "unknown",
+        cardName: "Unknown",
+        ...this.createReason(REASON_CODES.MISSING_CARD_NUMBER)
+      };
     }
 
-    const cleanedNumber = this.cleanCardNumber(number);
-
-    // Length validation
     if (!this.validateLength(cleanedNumber)) {
-      return { valid: false, type: "unknown", reason: "Invalid card length" };
+      return {
+        valid: false,
+        type: "unknown",
+        cardName: "Unknown",
+        ...this.createReason(REASON_CODES.INVALID_CARD_LENGTH)
+      };
     }
 
-    // Detect card type
     const cardInfo = this.detectCardType(cleanedNumber);
     const { type, name } = cardInfo;
 
-    // Structure validation
+    if (type === "unknown") {
+      return {
+        valid: false,
+        type,
+        cardName: name,
+        ...this.createReason(REASON_CODES.UNKNOWN_CARD_PROFILE)
+      };
+    }
+
+    if (!this.validateLength(cleanedNumber, cardInfo)) {
+      return {
+        valid: false,
+        type,
+        cardName: name,
+        ...this.createReason(REASON_CODES.INVALID_CARD_LENGTH)
+      };
+    }
+
     if (!this.validateStructure(cleanedNumber)) {
-      return { valid: false, type, cardName: name, reason: "Invalid card structure" };
+      return {
+        valid: false,
+        type,
+        cardName: name,
+        ...this.createReason(REASON_CODES.INVALID_CARD_STRUCTURE)
+      };
     }
 
-    // Luhn algorithm check
     if (!this.luhnCheck(cleanedNumber)) {
-      return { valid: false, type, cardName: name, reason: "Failed Luhn check" };
+      return {
+        valid: false,
+        type,
+        cardName: name,
+        ...this.createReason(REASON_CODES.FAILED_LUHN)
+      };
     }
 
-    // BIN/IIN validation
-    if (type !== "unknown" && !this.validateBIN(cleanedNumber, cardInfo)) {
-      return { valid: false, type, cardName: name, reason: "Invalid BIN/IIN" };
+    if (!this.validateBIN(cleanedNumber, cardInfo)) {
+      return {
+        valid: false,
+        type,
+        cardName: name,
+        ...this.createReason(REASON_CODES.INVALID_BIN_IIN)
+      };
     }
 
-    // Expiration validation
     const expResult = this.validateExpiration(month, year);
     if (!expResult.valid) {
-      return { valid: false, type, cardName: name, reason: expResult.reason };
+      return {
+        valid: false,
+        type,
+        cardName: name,
+        reasonCode: expResult.reasonCode,
+        reason: expResult.reason
+      };
     }
 
-    // CVV validation
     if (!this.validateCVV(cvv, cardInfo)) {
-      return { valid: false, type, cardName: name, reason: "Invalid CVV" };
+      return {
+        valid: false,
+        type,
+        cardName: name,
+        ...this.createReason(REASON_CODES.INVALID_CVV)
+      };
     }
 
     return {
@@ -299,87 +336,172 @@ class CCValidator {
       type,
       cardName: name,
       expMonth: expResult.month,
-      expYear: expResult.year
+      expYear: expResult.year,
+      reasonCode: null,
+      reason: ""
     };
   }
 
-  /**
-   * Simulate card status (for demo purposes)
-   * @returns {string} Status result
-   */
   simulateStatus() {
     return Math.random() < 0.2 ? "LIVE" : "DEAD";
   }
 
-  /**
-   * Process batch of cards with progress tracking
-   * @param {Array} cardsData - Array of card data strings
-   * @param {Function} progressCallback - Called with progress updates
-   * @param {Function} resultCallback - Called for each result
-   * @returns {Object} Final batch statistics
-   */
+  normalizeBatch(cardsData) {
+    return cardsData.map((cardData, index) => this.normalizeInput(cardData.trim(), index));
+  }
+
   async processBatch(cardsData, progressCallback, resultCallback) {
     if (this.isProcessing) return null;
 
+    const normalizedBatch = this.normalizeBatch(cardsData);
+    const totalRecords = normalizedBatch.length;
+
     this.isProcessing = true;
     this.currentBatch = {
-      total: cardsData.length,
+      total: totalRecords,
       processed: 0,
       valid: 0,
       live: 0,
-      dead: 0
+      dead: 0,
+      progress: 0
     };
 
-    for (let i = 0; i < cardsData.length; i++) {
+    const startTime = performance.now();
+
+    for (let i = 0; i < totalRecords; i += PROCESSING_CHUNK_SIZE) {
       if (!this.isProcessing) break;
+      const chunk = normalizedBatch.slice(i, i + PROCESSING_CHUNK_SIZE);
 
-      const cardData = cardsData[i].trim();
-      if (!cardData) {
-        this.currentBatch.processed++;
-        continue;
-      }
+      for (const normalizedCard of chunk) {
+        if (!this.isProcessing) break;
 
-      const validation = this.validateCard(cardData);
-      let status = "INVALID";
-
-      if (validation.valid) {
-        status = this.simulateStatus();
-        this.currentBatch.valid++;
-
-        if (status === "LIVE") {
-          this.currentBatch.live++;
-        } else {
-          this.currentBatch.dead++;
+        if (!normalizedCard.raw) {
+          this.currentBatch.processed++;
+          this.currentBatch.progress = totalRecords === 0
+            ? 0
+            : Math.floor((this.currentBatch.processed / totalRecords) * 100);
+          progressCallback(this.currentBatch);
+          continue;
         }
-      }
 
-      this.currentBatch.processed++;
-      const progress = Math.floor((this.currentBatch.processed / this.currentBatch.total) * 100);
+        const validation = this.validateCard(normalizedCard);
+        const status = this.classifyStatus(validation.valid);
 
-      if (status === "LIVE" || status === "DEAD") {
+        if (validation.valid) {
+          this.currentBatch.valid++;
+          if (status === "LIVE") {
+            this.currentBatch.live++;
+          } else {
+            this.currentBatch.dead++;
+          }
+        }
+
+        this.currentBatch.processed++;
+        const progress = totalRecords === 0
+          ? 0
+          : Math.floor((this.currentBatch.processed / totalRecords) * 100);
+        this.currentBatch.progress = progress;
+
         resultCallback({
-          cardData,
+          cardData: normalizedCard.raw,
           ...validation,
           status,
           progress
         });
+
+        progressCallback(this.currentBatch);
       }
 
-      progressCallback(this.currentBatch);
-
-      // Small delay for UI responsiveness
       await new Promise(resolve => setTimeout(resolve, PROCESSING_DELAY_MS));
     }
 
+    const elapsedMs = performance.now() - startTime;
+    this.currentBatch.elapsedMs = Number(elapsedMs.toFixed(2));
+    this.currentBatch.averageMsPerCard = totalRecords
+      ? Number((elapsedMs / totalRecords).toFixed(4))
+      : 0;
     this.isProcessing = false;
     return this.currentBatch;
   }
 
-  /**
-   * Stop batch processing
-   */
   stopProcessing() {
     this.isProcessing = false;
+  }
+
+  generateLuhnNumber(prefix, totalLength) {
+    const baseLength = totalLength - 1;
+    let body = prefix;
+    while (body.length < baseLength) {
+      body += "0";
+    }
+    body = body.slice(0, baseLength);
+
+    const checksum = (candidate) => {
+      let sum = 0;
+      let isSecond = false;
+      for (let i = candidate.length - 1; i >= 0; i--) {
+        let digit = Number(candidate[i]);
+        if (isSecond) {
+          digit *= 2;
+          if (digit > 9) digit -= 9;
+        }
+        sum += digit;
+        isSecond = !isSecond;
+      }
+      return sum;
+    };
+
+    for (let checkDigit = 0; checkDigit <= 9; checkDigit++) {
+      const candidate = `${body}${checkDigit}`;
+      if (checksum(candidate) % 10 === 0) {
+        return candidate;
+      }
+    }
+    return `${body}0`;
+  }
+
+  runAcceptanceChecks() {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const futureYear = String((now.getFullYear() + 2) % 100).padStart(2, "0");
+
+    const correctnessResults = Object.entries(this.cardProfiles).map(([type, profile]) => {
+      const prefix = String(profile.prefixes[0][0]);
+      const cardNumber = this.generateLuhnNumber(prefix, profile.lengths[0]);
+      const cvv = "0".repeat(profile.cvvLength[0]);
+      const cardData = `${cardNumber}|${month}|${futureYear}|${cvv}`;
+      const validation = this.validateCard(this.normalizeInput(cardData));
+      return { type, passed: validation.valid && validation.type === type };
+    });
+
+    const reasonCases = [
+      { cardData: "|01|2030|123", expected: REASON_CODES.MISSING_CARD_NUMBER },
+      { cardData: "4111111111111111|13|2030|123", expected: REASON_CODES.INVALID_MONTH },
+      { cardData: "4111111111111112|01|2030|123", expected: REASON_CODES.FAILED_LUHN }
+    ];
+
+    const reasonResults = reasonCases.map(testCase => {
+      const validation = this.validateCard(this.normalizeInput(testCase.cardData));
+      return validation.reasonCode === testCase.expected;
+    });
+
+    const benchmarkSample = 2000;
+    const benchmarkCard = this.normalizeInput(`4111111111111111|${month}|${futureYear}|123`);
+    const benchmarkStart = performance.now();
+    for (let i = 0; i < benchmarkSample; i++) {
+      this.validateCard(benchmarkCard);
+    }
+    const benchmarkElapsed = performance.now() - benchmarkStart;
+
+    const acceptanceSummary = {
+      correctness: correctnessResults.every(item => item.passed),
+      reasonConsistency: reasonResults.every(Boolean),
+      benchmarkAverageMsPerCard: Number((benchmarkElapsed / benchmarkSample).toFixed(4)),
+      supportedIssuersChecked: correctnessResults.length
+    };
+
+    console.info("Acceptance checks:", acceptanceSummary);
+    return acceptanceSummary;
   }
 }
 
@@ -532,11 +654,10 @@ document.addEventListener("DOMContentLoaded", () => {
    * Handle validation start
    */
   async function handleValidation() {
-    const cardsData = elements.cardInput.value
-      .split("\n")
-      .filter(line => line.trim());
+    const cardsData = elements.cardInput.value.split("\n");
+    const hasAtLeastOneCard = cardsData.some(line => line.trim());
 
-    if (cardsData.length === 0) {
+    if (!hasAtLeastOneCard) {
       showNotification("Please enter card data to validate", "warning");
       return;
     }
@@ -544,17 +665,24 @@ document.addEventListener("DOMContentLoaded", () => {
     setProcessingState(true);
     elements.resultsContainer.innerHTML = "";
 
-    await validator.processBatch(
+    const finalStats = await validator.processBatch(
       cardsData,
-      stats => updateCounters(stats),
+      stats => {
+        updateCounters(stats);
+        updateProgress(stats.progress || 0);
+      },
       result => {
-        updateProgress(result.progress);
         addResultToUI(result);
       }
     );
 
     setProcessingState(false);
-    showNotification("Validation complete!", "success");
+    if (finalStats) {
+      showNotification(
+        `Validation complete! Avg ${finalStats.averageMsPerCard}ms/card`,
+        "success"
+      );
+    }
   }
 
   /**
@@ -613,4 +741,5 @@ document.addEventListener("DOMContentLoaded", () => {
   // Initialize
   initializeTheme();
   addStructuredData();
+  validator.runAcceptanceChecks();
 });
