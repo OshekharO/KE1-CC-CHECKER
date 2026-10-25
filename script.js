@@ -304,11 +304,18 @@ class CCValidator {
   }
 
   /**
-   * Simulate card status (for demo purposes)
-   * @returns {string} Status result
+   * Deterministically evaluate card status based on input data hashing
+   * @param {string} cardData - Raw card data or cleaned card number
+   * @returns {string} Status result ("LIVE" or "DEAD")
    */
-  simulateStatus() {
-    return Math.random() < 0.2 ? "LIVE" : "DEAD";
+  simulateStatus(cardData = "") {
+    const str = String(cardData);
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash) % 5 === 0 ? "LIVE" : "DEAD";
   }
 
   /**
@@ -343,7 +350,7 @@ class CCValidator {
       let status = "INVALID";
 
       if (validation.valid) {
-        status = this.simulateStatus();
+        status = this.simulateStatus(cardData);
         this.currentBatch.valid++;
 
         if (status === "LIVE") {
